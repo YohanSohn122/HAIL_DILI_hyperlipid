@@ -106,11 +106,8 @@ for i in exam_dic_by_ordcode.keys():
 
     final_patient.append(len(distinct_patient))
     final_distinct_numeric.append(len(distinct_numeric))
-    num_non_numeric = 0
-    for j in distinct_non_numeric.keys():
-        num_non_numeric += distinct_non_numeric[j]
-    final_distinct_non_numeric.append(num_non_numeric)
-    final_distinct_total.append(len(distinct_numeric) + num_non_numeric)
+    final_distinct_non_numeric.append(len(list(distinct_non_numeric.keys())))
+    final_distinct_total.append(len(distinct_numeric) + len(list(distinct_non_numeric.keys())))
     if len(distinct_unit) == 1:
         final_unit.append(distinct_unit[0])
     else:
@@ -274,26 +271,7 @@ for i in exam_dic_by_ordcode.keys():
         null_data(i)
     else:
         print('processing error',i)
-'''
-print(len(list(exam_dic_by_ordcode.keys())))
-print(len(final_patient))
-print(len(final_distinct_numeric))
-print(len(final_distinct_non_numeric))
-print(len(final_distinct_total))
-print(len(final_value_type))
-print(len(final_unit))
-print(len(final_records))
-print(len(final_mean))
-print(len(final_std))
-print(len(final_min))
-print(len(final_percentile[0]))
-print(len(final_max))
-print(len(final_p))
-print(len(final_e))
-print(len(final_n))
-print(len(final_other))
 
-'''
 import pandas as pd
 import os
 
