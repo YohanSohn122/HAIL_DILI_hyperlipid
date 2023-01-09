@@ -3,10 +3,10 @@
 # 0: PATNO, 1: ORDCODE, 2: OQTY, 3: PACKQTY, 4: CNT, 5: SDATE(ORDDATE)
 # 6: DAY, 7: EDATE(ORDDATE+DAY), 8: 'PACKQTY'*'CNT'*'DAY', 9: DCYN, 10: MKFG
 import pymysql      # use pip to install pymysql
-conn = pymysql.connect(host='203.252.105.181',
-                       user='yohansohn',        #userid
-                       password='johnsohn12',   #userpassword
-                       db='DR_ANS_AJCO',
+conn = pymysql.connect(host='',
+                       user='',        #userid
+                       password='',   #userpassword
+                       db='',
                        charset='utf8')
 cursor = conn.cursor()
 sql = '''
