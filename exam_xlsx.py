@@ -4,12 +4,20 @@
 import numpy as np
 
 import pymysql      # use pip to install pymysql
-conn = pymysql.connect(host='203.252.105.181',
-                       user='yohansohn',        #userid
-                       password='johnsohn12',   #userpassword
-                       db='DR_ANS_AJCO',
+conn = pymysql.connect(host='',
+                       user='',        #userid
+                       password='',   #userpassword
+                       db='',
                        charset='utf8')
 cursor = conn.cursor()
+
+sql = '''
+select `ORDCODE`,`ORDNAME`  from `common_drug_master`;
+'''
+cursor.execute(sql)
+result = cursor.fetchall()
+common_drug = list(result)
+
 sql = '''
             select * from `exam`
             where `PATNO` > 5000000 and `PATNO`< 6000000
@@ -33,6 +41,14 @@ for i in exam:
 keys = list(exam_dic_by_ordcode.keys())
 keys.sort()
 exam_dic_by_ordcode = {i: exam_dic_by_ordcode[i] for i in keys}
+
+final_ordname = []
+def find_ordname(ordcode):
+    for i in common_drug:
+        if i[0]==ordcode:
+            return i[1]
+for i in exam_dic_by_ordcode:
+    final_ordname.append(find_ordname(i))
 
 # distinct : data for distinct rsltnum
 # only number of types for numeric data
@@ -93,10 +109,13 @@ for i in exam_dic_by_ordcode.keys():
                 distinct_non_numeric[j[9]] = 1
             else:
                 distinct_non_numeric[j[9]] += 1
+
         if j[10] is None:
-            distinct_unit.append('NULL')
+            if 'NULL' not in distinct_unit:
+                distinct_unit.append('NULL')
         elif j[10] not in distinct_unit:
             distinct_unit.append(j[10])
+        
         if j[0] not in distinct_patient:
             distinct_patient.append(j[0])
         
@@ -279,6 +298,7 @@ file_nm = 'exam.xlsx'
 xlxs_dir = os.path.join(file_nm)
 
 df = pd.DataFrame({'ordcode':list(exam_dic_by_ordcode.keys()),
+                   'ordname':final_ordname,
                    'patient':final_patient,
                    'distinct_numeric':final_distinct_numeric,
                    'distinct_non_numeric':final_distinct_non_numeric,
@@ -310,8 +330,10 @@ df.to_excel(xlxs_dir, # directory and file name to write
             na_rep = 'NaN', 
             float_format = "%.2f", 
             header = True,
-            startrow = 1, 
-            startcol = 1, 
+            startrow = 0, 
+            startcol = 0, 
             #engine = 'xlsxwriter', 
             freeze_panes = (2, 0)
             ) 
+
+print('code finished')
