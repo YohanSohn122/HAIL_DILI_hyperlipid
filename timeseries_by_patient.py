@@ -1,10 +1,10 @@
 #PATNO, HEIGHT, WEIGHT - nur | SEX- common_pat | ADMDT(입원날짜), DSCHDT(퇴원날짜) -adm_history |
 import pymysql      # use pip to install pymysql
 print('program started')
-conn = pymysql.connect(host='203.252.105.181',
-                       user='yohansohn',        #userid
-                       password='johnsohn12',   #userpassword
-                       db='DR_ANS_AJCO',
+conn = pymysql.connect(host='',
+                       user='',        #userid
+                       password='',   #userpassword
+                       db='',
                        charset='utf8')
 cursor = conn.cursor()
 
@@ -107,12 +107,14 @@ for patno in patient_data.keys():
             data_by_date[data[2]] = [[], [data]]
     patient_data[patno].append(data_by_date)
 #print(patient_data[list(patient_data.keys())[0]])
+print('exam and drug data classified by patno')
 
-# key: PATNO, item =[ 0: nur data, 1: admission data, 2: timeseries data=[exam data, drug data] ]
-# exam data = 0: B1060001, 1: B1540001A, 2: B1540001B, 3: B2570001, 4: B2580001
+# key: PATNO, item =[ 0: nur data, 1: admission data, 2: timeseries data exam data, 3: timeseries data drug data ]
+# exam data = key : date
+#             item = 0: B1060001, 1: B1540001A, 2: B1540001B, 3: B2570001, 4: B2580001
 #             5: B2602001, 6: B2710001, 7: C2210001, 8: C3720001, 9: C3730001
 #             10: C3750001, 11: C3750001A
-# drug data = ordered by scode
+# drug data = same structure with exam data with item number ordered by scode
 exam_ord = ['B1060001','B1540001A','B1540001B','B2570001','B2580001','B2602001',
             'B2710001','C2210001','C3720001','C3730001','C3750001','C3750001A']
 def find_ord(ord):
@@ -125,6 +127,7 @@ def find_scode(inp):
         if scode[i][0] == inp:
             return i
     return -1
+
 final_data = {}
 for patno in patient_data.keys():
     final_data[patno] = [patient_data[patno][0], patient_admin_data[patno], {}, {}]
@@ -143,7 +146,15 @@ for patno in patient_data.keys():
             if index != -1:
                 final_data[patno][3][date][index] += 1
 
-    print(final_data[patno])
+#temp = final_data[list(final_data.keys())[0]]
+#print(temp[1])
+#print(len(temp))
+#print(len(temp[2].keys()))
+#print(len(temp[3].keys()))
+#print(len(temp[2][list(temp[2].keys())[0]]))
+#print(len(temp[3][list(temp[3].keys())[0]]))
+
+print('final data making process finished')
 
 import pandas as pd
 import os
@@ -152,11 +163,82 @@ import openpyxl
 file_nm = 'timeseries.xlsx'
 xlxs_dir = os.path.join(file_nm)
 
-df = pd.DataFrame({})
+final_patno = []
+final_weight = []
+final_height = []
+final_gender = []
+final_age_year = []
+final_age_month = []
+final_admission = []
+final_discharge = []
+final_admission_date = []
+final_date = []
+final_exam = []
+for i in range(12):
+    final_exam.append([])
+'''
+final_drug = []
+for i in range(len(scode)):
+    final_drug.append([])
+'''
+# write all data needed to export
+for patno in final_data.keys():
+    date_length = len(final_data[patno][2].keys())
+
+    final_patno.append(final_data[patno][0][0])
+    final_weight.append(final_data[patno][0][2])
+    final_height.append(final_data[patno][0][1])
+    final_gender.append(final_data[patno][0][3])
+    final_age_year.append(final_data[patno][0][4])
+    final_age_month.append(final_data[patno][0][5])
+    for i in range(date_length-1):
+        final_patno.append(None)
+        final_weight.append(None)
+        final_height.append(None)
+        final_gender.append(None)
+        final_age_year.append(None)
+        final_age_month.append(None)
+
+    for i in range(len(final_data[patno][1])):
+        final_admission.append(final_data[patno][1][i][1])
+        final_discharge.append(final_data[patno][1][i][2])
+        final_admission_date.append(final_data[patno][1][i][3])
+    for i in range(date_length-len(final_data[patno][1])):
+        final_admission.append(None)
+        final_discharge.append(None)
+        final_admission_date.append(None)
+
+    for i in final_data[patno][2].keys():
+        final_date.append(i)
+        for j in range(12):
+            final_exam[j].append(final_data[patno][2][i][j])
+'''
+        for k in range(len(scode)):
+            final_drug[k].append(final_data[patno][3][i][k])'''
+
+print('making export data process finished')
+
+export_data = {'PATNO':final_patno,
+               'HEIGHT':final_height,
+               'WEIGHT':final_weight,
+               'GENDER':final_gender,
+               'AGE_YEAR':final_age_year,
+               'AGE_MONTH':final_age_month,
+               'ADMDT':final_admission,
+               'DSCHDT':final_discharge,
+               'DATEDIFF':final_admission_date,
+               'DATE':final_date}
+for i in range(12):
+    export_data[exam_ord[i]] = final_exam[i]
+'''
+for i in range(len(scode)):
+    export_data[scode[i][1]] = final_drug[i]
+'''
+df = pd.DataFrame(export_data)
 
 df.to_excel(xlxs_dir, # directory and file name to write
             sheet_name = 'Sheet1',
-            na_rep = 'NaN',
+            na_rep = '',
             float_format = "%.2f",
             header = True,
             startrow = 0,
