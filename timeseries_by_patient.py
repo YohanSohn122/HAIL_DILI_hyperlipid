@@ -1,10 +1,10 @@
 #PATNO, HEIGHT, WEIGHT - nur | SEX- common_pat | ADMDT(입원날짜), DSCHDT(퇴원날짜) -adm_history |
 import pymysql      # use pip to install pymysql
 print('program started')
-conn = pymysql.connect(host='',
-                       user='',        #userid
-                       password='',   #userpassword
-                       db='',
+conn = pymysql.connect(host='203.252.105.181',
+                       user='yohansohn',        #userid
+                       password='johnsohn12',   #userpassword
+                       db='DR_ANS_AJCO',
                        charset='utf8')
 cursor = conn.cursor()
 
@@ -105,6 +105,11 @@ for patno in patient_data.keys():
             data_by_date[data[2]][1].append(data)
         else:
             data_by_date[data[2]] = [[], [data]]
+
+    keys = list(data_by_date.keys())
+    keys.sort()
+    data_by_date = {i: data_by_date[i] for i in keys}
+
     patient_data[patno].append(data_by_date)
 #print(patient_data[list(patient_data.keys())[0]])
 print('exam and drug data classified by patno')
@@ -157,11 +162,10 @@ for patno in patient_data.keys():
 print('final data making process finished')
 
 import pandas as pd
-import os
 import openpyxl
 
-file_nm = 'timeseries.xlsx'
-xlxs_dir = os.path.join(file_nm)
+xlsx_dir = 'timeseries.xlsx'
+csv_dir = 'timeseries.csv'
 
 final_patno = []
 final_weight = []
@@ -176,11 +180,11 @@ final_date = []
 final_exam = []
 for i in range(12):
     final_exam.append([])
-'''
+
 final_drug = []
 for i in range(len(scode)):
     final_drug.append([])
-'''
+
 # write all data needed to export
 for patno in final_data.keys():
     date_length = len(final_data[patno][2].keys())
@@ -199,22 +203,22 @@ for patno in final_data.keys():
         final_age_year.append(None)
         final_age_month.append(None)
 
-    for i in range(len(final_data[patno][1])):
-        final_admission.append(final_data[patno][1][i][1])
-        final_discharge.append(final_data[patno][1][i][2])
-        final_admission_date.append(final_data[patno][1][i][3])
-    for i in range(date_length-len(final_data[patno][1])):
+    for a in range(len(final_data[patno][1])):
+        final_admission.append(final_data[patno][1][a][1])
+        final_discharge.append(final_data[patno][1][a][2])
+        final_admission_date.append(final_data[patno][1][a][3])
+    for b in range(date_length-len(final_data[patno][1])):
         final_admission.append(None)
         final_discharge.append(None)
         final_admission_date.append(None)
 
-    for i in final_data[patno][2].keys():
-        final_date.append(i)
+    for c in final_data[patno][2].keys():   # c : date
+        final_date.append(c)
         for j in range(12):
-            final_exam[j].append(final_data[patno][2][i][j])
-'''
+            final_exam[j].append(final_data[patno][2][c][j])
+
         for k in range(len(scode)):
-            final_drug[k].append(final_data[patno][3][i][k])'''
+            final_drug[k].append(final_data[patno][3][c][k])
 
 print('making export data process finished')
 
@@ -230,12 +234,15 @@ export_data = {'PATNO':final_patno,
                'DATE':final_date}
 for i in range(12):
     export_data[exam_ord[i]] = final_exam[i]
-'''
+
 for i in range(len(scode)):
     export_data[scode[i][1]] = final_drug[i]
-'''
-df = pd.DataFrame(export_data)
 
+df = pd.DataFrame(export_data)
+print(df.shape)
+
+df.to_csv(csv_dir, index_label=export_data.keys())
+'''
 df.to_excel(xlxs_dir, # directory and file name to write
             sheet_name = 'Sheet1',
             na_rep = '',
@@ -245,5 +252,5 @@ df.to_excel(xlxs_dir, # directory and file name to write
             startcol = 0,
             #engine = 'xlsxwriter',
             freeze_panes = (2, 0)
-            )
+            )'''
 print('code finished')
