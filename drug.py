@@ -20,7 +20,7 @@ common = list(result)
 
 sql = '''SELECT `PATNO`, `drug`.`ORDCODE`, `common_drug_master`.`SCODE`,`OQTY`, `PACKQTY`, `CNT`, `ORDDATE` AS `SDATE(ORDDATE)`, `DAY`, DATE_FORMAT(DATE_ADD(STR_TO_DATE(`ORDDATE`, '%Y%m%d'), INTERVAL `DAY` DAY), '%Y%m%d') AS `EDATE(ORDDATE + DAY)`,`PACKQTY` * `CNT` * `DAY`, `DCYN`, `MKFG`
 FROM `drug` INNER JOIN `common_drug_master` ON `drug`.`ORDCODE`=`common_drug_master`.`ORDCODE`
-WHERE `SCODE` IS NOT NULL AND `PATNO` > 5000000 `DCYN` = 'N';'''
+WHERE `SCODE` IS NOT NULL AND `PATNO` > 5000000 and `DCYN` = 'N';'''
 cursor.execute(sql)
 result = cursor.fetchall()      # result is given as tuple
 drug = list(result)
