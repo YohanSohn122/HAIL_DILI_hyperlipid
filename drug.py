@@ -11,14 +11,16 @@ conn = pymysql.connect(host='',
                        db='',
                        charset='utf8')
 cursor = conn.cursor()
-sql = '''select `ORDCODE`,`ORDNAME`,`SCODE`,`IRGDNAME`  from `common_drug_master`;'''
+sql = '''SELECT drug.ORDCODE, common_drug_master.SCODE, common_drug_master.IRGDNAME FROM drug JOIN `common_drug_master` ON drug.ORDCODE = `common_drug_master`.ORDCODE
+WHERE drug.PATNO>5000000 AND common_drug_master.SCODE is not null 
+GROUP BY drug.ORDCODE ORDER BY common_drug_master.SCODE ASC;'''
 cursor.execute(sql)
 result = cursor.fetchall()
 common = list(result)
 
 sql = '''SELECT `PATNO`, `drug`.`ORDCODE`, `common_drug_master`.`SCODE`,`OQTY`, `PACKQTY`, `CNT`, `ORDDATE` AS `SDATE(ORDDATE)`, `DAY`, DATE_FORMAT(DATE_ADD(STR_TO_DATE(`ORDDATE`, '%Y%m%d'), INTERVAL `DAY` DAY), '%Y%m%d') AS `EDATE(ORDDATE + DAY)`,`PACKQTY` * `CNT` * `DAY`, `DCYN`, `MKFG`
 FROM `drug` INNER JOIN `common_drug_master` ON `drug`.`ORDCODE`=`common_drug_master`.`ORDCODE`
-WHERE `SCODE` IS NOT NULL AND `PATNO` > 5000000 AND SIGN(`PACKQTY`) <> -1 AND SIGN(`CNT`) <> -1 AND SIGN(`DAY`) <> -1 AND `DCYN` = 'N';'''
+WHERE `SCODE` IS NOT NULL AND `PATNO` > 5000000 `DCYN` = 'N';'''
 cursor.execute(sql)
 result = cursor.fetchall()      # result is given as tuple
 drug = list(result)
@@ -106,17 +108,31 @@ import openpyxl
 file_nm = 'drug.xlsx'
 xlxs_dir = os.path.join(file_nm)
 
+final_irgdname = []
+for i in common:
+    final_irgdname.append(i[2])
+final_np_dcbr = []
+for i in range(len(final_duration_np)):
+    final_np_dcbr.append(final_duration_np[i] - final_duration_dcbr[i])
+final_avg_dur_np_dcbr = []
+for i in range(len(final_np_dcbr)):
+    final_avg_dur_np_dcbr.append(final_np_dcbr[i] / final_patient[i])
+
 df = pd.DataFrame({'scode':list(drug_dic_by_scode.keys()),
+                   'irgdname':final_irgdname,
                    'ordcode':final_ordcode,
                    'patient':final_patient,
                    'duration_np':final_duration_np,
                    'duration_dcbr':final_duration_dcbr,
+                   'duration_(np-dcbr)':final_np_dcbr,
                    'avg_duration_np':final_avg_dur_np,
-                   'avg_duration_dcbr':final_duration_dcbr})
+                   'avg_duration_dcbr':final_avg_dur_dcbr,
+                   'avg_duration_(np-dcbr)':final_avg_dur_np_dcbr
+                   })
 
 df.to_excel(xlxs_dir, # directory and file name to write
             sheet_name = 'Sheet1', 
-            na_rep = 'NaN', 
+            na_rep = '',
             float_format = "%.2f", 
             header = True,
             startrow = 0,
