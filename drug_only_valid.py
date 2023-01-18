@@ -55,9 +55,15 @@ drug_by_patient = {}
 total_count = 0
 total_dur = 0
 for data in drug_raw:
-    total_count += 1
-    total_dur += data[9]
     if data[2] in valid_scode:
+        total_count += 1
+        if data[11] in ['N', 'P']:
+            total_dur += data[9]
+        else:
+            if data[9] > 0:
+                total_dur -= data[9]
+            else:
+                total_dur += data[9]
         if data[0] in drug_by_patient.keys():
             if data[6] in drug_by_patient[data[0]].keys():
                 if data[2] in drug_by_patient[data[0]][data[6]].keys():
@@ -113,14 +119,24 @@ final_valid_count = []
 final_valid_zero_count = []
 final_np_dur = []
 final_valid_dur = []
+total_np_count = 0
+total_final_count = 0
+total_final_count_with_zero = 0
+total_np_dur = 0
+total_final_dur = 0
 
 for scode in final_by_scode.keys():
     final_irgd.append(irgd_by_scode[scode])
     final_np_count.append(final_by_scode[scode][0])
+    total_np_count += final_by_scode[scode][0]
     final_valid_count.append(final_by_scode[scode][1])
+    total_final_count += final_by_scode[scode][1]
     final_valid_zero_count.append(final_by_scode[scode][2])
+    total_final_count_with_zero += final_by_scode[scode][2]
     final_np_dur.append(final_by_scode[scode][3])
+    total_np_dur += final_by_scode[scode][3]
     final_valid_dur.append(final_by_scode[scode][4])
+    total_final_dur += final_by_scode[scode][4]
 
 df = pd.DataFrame({'scode': final_scode,
                    'IRGDNAME': final_irgd,
@@ -134,4 +150,6 @@ df = pd.DataFrame({'scode': final_scode,
 df.to_csv(csv_dir)
 
 print('total count(DCYN = N)', total_count, 'total duration', total_dur)
+print('total NP', total_np_count, 'total final', total_final_count, 'total final with zero', total_final_count_with_zero)
+print('total NP dur', total_np_dur, 'total final dur', total_final_dur)
 print('code finished')
