@@ -1,166 +1,42 @@
-# PATNO, HEIGHT, WEIGHT - nur | SEX- common_pat | ADMDT(입원날짜), DSCHDT(퇴원날짜) -adm_history |
-import pandas
+import pandas as pd
 import pymysql  # use pip to install pymysql
+import time
+import re
+import numpy as np
+from enum import Enum
 
-print('program started')
-conn = pymysql.connect(host='203.252.105.181',
-                       user='yohansohn',  # userid
-                       password='johnsohn12',  # userpassword
-                       db='DR_ANS_AJCO',
-                       charset='utf8')
-cursor = conn.cursor()
-
-# 0: SCODE
-# only scode that has more than 100 patients are prescripted and has DCYN as N
-# remove socde where product name contains '원외', '자가', '임상'
-sql = '''SELECT SCODE
-FROM common_drug_master
-JOIN drug ON drug.ORDCODE = common_drug_master.ORDCODE
-WHERE PATNO like '5%' AND DCYN ='N'
-AND common_drug_master.TODATE LIKE '29991231'
-AND common_drug_master.`PRODENNM` not like '%원외%'
-AND common_drug_master.`PRODENNM` not like '%자가%'
-AND common_drug_master.`PRODENNM` not like '%임상%'
-GROUP BY SCODE
-HAVING COUNT(DISTINCT PATNO) >= 100 AND SCODE is not null;'''
-cursor.execute(sql)
-result = cursor.fetchall()
-drug_raw = list(result)
-drug_scode = []
-for i in drug_raw:
-    drug_scode.append(i[0])
-
-# avgerage data about weight and height : need to be modified to common average by gender and age
-sql = '''
-select avg(weight), avg(height) from nur
-where patno>5000000 and patno<6000000;'''
-cursor.execute(sql)
-avg_data = cursor.fetchall()
+class Mkfg(Enum):
+    PRESCRIBED = 1
+    RETRIEVED = -1
 
 
-# 0: PATNO, 1: HEIGHT, 2: WEIGHT
-sql = '''select patno, meddate, height, weight from body_measure
-where patno>5000000 and patno<6000000;'''
-cursor.execute(sql)
-result = cursor.fetchall()
-additional_patient_data = {}
-for i in result:
-    if i[0] in additional_patient_data.keys():
-        additional_patient_data[i[0]].append(i)
-    else:
-        additional_patient_data[i[0]] = [i]
+class PN(Enum):
+    POSITIVE = 1
+    NEGATIVE = 0
 
-# 0: PATNO, 1: MEDDATE, 2: HEIGHT, 3: WEIGHT, 4: SEX, 5: AGE_YEAR, 6: AGE_MONTH
-sql = '''#PATNO, HEIGHT, WEIGHT, SEX, AGE_YEAR(나이(연)), AGE_MONTH(나이(개월))
-SELECT nur.PATNO, nur.meddate, nur.HEIGHT, nur.WEIGHT, common_pat.SEX, nur.AGE_YEAR, nur.AGE_MONTH
-FROM nur JOIN common_pat ON nur.PATNO = common_pat.PATNO
-WHERE nur.PATNO >5000000;
-'''
-cursor.execute(sql)
-result = cursor.fetchall()
-patient_data_raw = list(result)
 
-patient_data = {}
-for i in patient_data_raw:
-    if i[0] in patient_data.keys():
-        patient_data[i[0]].append(i)
-    else:
-        patient_data[i[0]] = [i]
-# # admission data of each patient(not used)
-# # 0: PATNO, 1: ADMDT, 2: DSCHDT, 3: DATEDIFF
-# sql = '''SELECT nur.PATNO, adm_history.ADMDT, adm_history.DSCHDT, DATEDIFF(adm_history.DSCHDT, adm_history.ADMDT)
-# FROM adm_history JOIN common_pat ON adm_history.PATNO = common_pat.PATNO
-# 		JOIN nur ON adm_history.PATNO = nur.PATNO
-# WHERE adm_history.PATNO>5000000 AND (nur.`PATNO`,nur.`SEQ`) IN (SELECT PATNO,MAX(SEQ) as SEQ
-# 				FROM nur GROUP BY PATNO);'''
-# cursor.execute(sql)
-# result = cursor.fetchall()
-# patient_admin_data_raw = list(result)
-# patient_admin_data = {}
-# for i in patient_admin_data_raw:
-#     if i[0] in patient_admin_data.keys():
-#         patient_admin_data[i[0]].append(i)
-#     else:
-#         patient_admin_data[i[0]] = [i]
+class PEN(Enum):
+    POSITIVE = 1
+    EQUIVOCAL = 0
+    NEGATIVE = -1
 
-# 0: PATNO, 1: ordcode, 2: orddate, 3: rsltnum
-sql = '''select patno, ordcode, orddate, rsltnum from `exam`
-where `PATNO`>5000000 and `PATNO`<6000000;'''
-cursor.execute(sql)
-result = cursor.fetchall()
-patient_exam_raw = list(result)
-patient_exam = {}
-for i in patient_exam_raw:
-    if i[0] in patient_exam.keys():
-        patient_exam[i[0]].append(i)
-    else:
-        patient_exam[i[0]] = [i]
 
-# 0: patno, 1: ordcode, 2: orddate, 3: patfg, 4: packqty, 5: cnt, 6: day, 7: dcyn, 8: mkfg 9: scode
-sql = '''select
-    patno, drug.ordcode, orddate, patfg, packqty, cnt, day, dcyn, mkfg, scode
-from
-    `drug` join common_drug_master cdm on drug.ORDCODE = cdm.ORDCODE
-where
-    SCODE IS NOT NULL AND dcyn = 'N' AND `PATNO` >5000000 and `PATNO`<6000000;'''
-cursor.execute(sql)
-result = cursor.fetchall()
-patient_drug_raw = list(result)
-patient_drug = {}
-for i in patient_drug_raw:
-    if i[0] in patient_drug.keys():
-        patient_drug[i[0]].append(i)
-    else:
-        patient_drug[i[0]] = [i]
+class ValueType(Enum):
+    NUMERIC = 0
+    PN = 1
+    PEN = 2
 
-# patient data by date
-# key = patno
-# item = { key: date, item = [nur, exam, drug] }
-# nur, exam, drug : list
-patient_data_by_date = {}
-for patno in patient_data.keys():
-    data_by_date = {}
-    for nur_data in patient_data[patno]:
-        if nur_data[1] in data_by_date.keys():
-            data_by_date[nur_data[1]][0].append(nur_data)
-        else:
-            data_by_date[nur_data[1]] = [[nur_data], [], []]
-    for exam_data in patient_exam[patno]:
-        if exam_data[2] in data_by_date.keys():
-            data_by_date[exam_data[2]][1].append(exam_data)
-        else:
-            data_by_date[exam_data[2]] = [[], [exam_data], []]
-    for drug_data in patient_drug[patno]:
-        if drug_data[2] in data_by_date.keys():
-            data_by_date[drug_data[2]][2].append(drug_data)
-        else:
-            data_by_date[drug_data[2]] = [[], [], [drug_data]]
-
-    keys = list(data_by_date.keys())
-    keys.sort()
-    data_by_date = {i: data_by_date[i] for i in keys}
-
-    patient_data_by_date[patno] = data_by_date
-# print(patient_data_by_date[list(patient_data_by_date.keys())[0]])
-
-print('exam and drug data classified by patno')
 
 # exam_ord : whole ordcode used for exam data
 # exam_for_column : whole ordcode used only for column of timeseries data
 # exam_pn_ord : ordcode that has PN for value type
 # exam_pen_ord : ordcode that has PEN for value type
-# exam_num_ord : ordcdoe that has numeric vlaue for value type
-# grouping_needed : each group of ordcode that needs to be grouped to one(first ordcode as representitive ordcode)
+# exam_num_ord : ordcode that has numeric value for value type
+# grouping_needed : each group of ordcode that needs to be grouped to one(first ordcode as representative ordcode)
 # pen_case : whole case of values for PEN value type
 # p_case: whole case of values for P value type
 # e_case: whole case of values for E value type
 # n_case: whole case of values for N value type
-exam_ord = ('B1060001', 'B1540001A', 'B1540001B', 'B2570001', 'B2580001', 'B2602001', 'B2710001', 'C2210001',
-            'C3720001', 'C3730001', 'C3750001', 'C3750001A', 'C4802001', 'C4802002', 'C4802051', 'C4803001',
-            'C4812052', 'C4872001', 'C4872002', 'CZ492001')
-exam_for_column = ('B1060001', 'B1540001A', 'B1540001B', 'B2570001', 'B2580001', 'B2602001', 'B2710001',
-                   'C2210001', 'C3720001', 'C3730001', 'C3750001', 'C3750001A', 'C4802001(PN)',
-                   'C4802001(value)', 'C4812052(PN)', 'C4812052(value)', 'C4872001(PN)', 'C4872001(value)')
 exam_pn_ord = ('C4802001', 'C4812052', 'C4872001')
 exam_pen_ord = ()
 exam_num_ord = ('B1060001', 'B1540001A', 'B1540001B', 'B2570001', 'B2580001', 'B2602001', 'B2710001',
@@ -170,238 +46,349 @@ pen_case = ('Positive', 'Pos', 'P', 'W.Pos', 'Negative', 'Neg', 'N', 'Equivocal'
 p_case = ('Positive', 'Pos', 'P', 'W.Pos')
 e_case = ('Equivocal', 'E')
 n_case = ('Neg', 'N')
+exam_ord = ('B1060001', 'B1540001A', 'B1540001B', 'B2570001', 'B2580001', 'B2602001', 'B2710001', 'C2210001',
+            'C3720001', 'C3730001', 'C3750001', 'C3750001A', 'C4802001', 'C4802002', 'C4802051', 'C4803001',
+            'C4812052', 'C4872001', 'C4872002', 'CZ492001')
+exam_for_column = ('B1060001', 'B1540001A', 'B1540001B', 'B2570001', 'B2580001', 'B2602001', 'B2710001',
+                   'C2210001', 'C3720001', 'C3730001', 'C3750001', 'C3750001A', 'C4802001(PN)',
+                   'C4802001(value)', 'C4812052(PN)', 'C4812052(value)', 'C4872001(PN)', 'C4872001(value)')
 
-# key: PATNO
-# item =[ 0: timesereis data patient body measure, 1: timeseries data exam data, 2: timeseries data drug data ]
-# body measure = [ age_year, age_month, height, weight, bmi ]
-# exam data = key : date
-#             item = 0: B1060001, 1: B1540001A, 2: B1540001B, 3: B2570001, 4: B2580001
-#             5: B2602001, 6: B2710001, 7: C2210001, 8: C3720001, 9: C3730001
-#             10: C3750001, 11: C3750001A ... -> specified in ordcode list
-# drug data = same structure with exam data with item number ordered by scode
-import re
-final_data = {}
-# multiple_tests = {}
-for patno in patient_data_by_date.keys():
-    final_data[patno] = [{}, {}, {}]
-    for date in patient_data_by_date[patno].keys():
-        final_data[patno][0][date] = []
-        final_data[patno][1][date] = {}
-        final_data[patno][2][date] = {}
 
-# patient body measure datw for each day
-# need to be done after checking data
-#         for body_data in patient_data_by_date[patno][date][0]:
-#             temp = []
-#             temp.append()
-#             final_data[patno][0][date].append(list(patient_data_by_date[patno][date][0][2]))
-        for ordcode in exam_num_ord:
-            final_data[patno][1][date][ordcode] = []
-        for ordcode in exam_pn_ord:
-            final_data[patno][1][date][ordcode] = [[], []]
-        for ordcode in exam_pen_ord:
-            final_data[patno][1][date][ordcode] = [[], []]
-        for exam_data in patient_data_by_date[patno][date][1]:
-            if exam_data[1] in exam_num_ord:
-                final_data[patno][1][date][exam_data[1]].append(exam_data[3])
-            elif exam_data[1] in exam_pn_ord:
-                if exam_data[3] in p_case or 'P' in exam_data[3]:
-                    final_data[patno][1][date][exam_data[1]][0].append(1)
-                elif exam_data[3] in n_case or 'N' in exam_data[3]:
-                    final_data[patno][1][date][exam_data[1]][0].append(0)
-                if len(re.findall("\d+\.\d+",exam_data[3])) != 0:
-                    final_data[patno][1][date][exam_data[1]][1].append(re.findall("\d+\.\d+",exam_data[3])[0])
-            elif exam_data[1] in grouping_needed[0]:
-                if exam_data[3] in p_case or 'P' in exam_data[3]:
-                    final_data[patno][1][date][grouping_needed[0][0]][0].append(1)
-                elif exam_data[3] in n_case or 'N' in exam_data[3]:
-                    final_data[patno][1][date][grouping_needed[0][0]][0].append(0)
-                if len(re.findall("\d+\.\d+", exam_data[3])) != 0:
-                    final_data[patno][1][date][grouping_needed[0][0]][1].append(re.findall("\d+\.\d+", exam_data[3])[0])
-            elif exam_data[1] in grouping_needed[1]:
-                if exam_data[3] in p_case or 'P' in exam_data[3]:
-                    final_data[patno][1][date][grouping_needed[1][0]][0][0].append(1)
-                elif exam_data[3] in n_case or 'N' in exam_data[3]:
-                    final_data[patno][1][date][grouping_needed[1][0]][0].append(0)
-                if len(re.findall("\d+\.\d+", exam_data[3])) != 0:
-                    final_data[patno][1][date][grouping_needed[1][0]][1].append(re.findall("\d+\.\d+", exam_data[3])[0])
+def pn(rsltnum):
+    if rsltnum in p_case or 'P' in rsltnum:
+        return PN.POSITIVE
+    if rsltnum in n_case or 'N' in rsltnum:
+        return PN.NEGATIVE
+    return None
+
+
+def pen(rsltnum):
+    if rsltnum in p_case or 'P' in rsltnum:
+        return PEN.POSITIVE
+    if rsltnum in n_case or 'N' in rsltnum:
+        return PEN.NEGATIVE
+    if rsltnum in e_case or 'E' in rsltnum:
+        return PEN.EQUIVOCAL
+    return None
+
+
+class Exam:
+    def __init__(self, ordcode, meddate, rsltnum):
+        for group in grouping_needed:
+            if ordcode in group:
+                self.ordcode = group[0]
             else:
-                continue
-            # if len(final_data[patno][0][date][each_exam_data[1]]) > 1 and (each_exam_data[1] in exam_pn_ord or each_exam_data[1] in exam_pen_ord):
-            #     print(patno, date, each_exam_data[1], final_data[patno][0][date][each_exam_data[1]])
+                self.ordcode = ordcode
+        meddate = time.strptime(meddate, '%Y%m%d')
+        if self.ord_value() == ValueType.NUMERIC:
+            self.rsltnum = {meddate: [rsltnum, [rsltnum]]}
+        elif self.ord_value() == ValueType.PN:
+            if pn(rsltnum) == PN.POSITIVE:
+                self.rsltnum = {meddate: [PN.POSITIVE, [re.findall('\d+\.+\d', rsltnum)[0]]]}
+            elif pn(rsltnum) == PN.NEGATIVE:
+                self.rsltnum = {meddate: [PN.NEGATIVE, [re.findall('\d+\.+\d', rsltnum)[0]]]}
+            else:
+                print('error : no pn value', self.ordcode, meddate, self.rsltnum)
+        elif self.ord_value() == ValueType.PEN:
+            if pen(rsltnum) == PEN.POSITIVE:
+                self.rsltnum = {meddate: [PEN.POSITIVE, [re.findall('\d+\.+\d', rsltnum)[0]]]}
+            elif pen(rsltnum) == PEN.NEGATIVE:
+                self.rsltnum = {meddate: [PEN.NEGATIVE, [re.findall('\d+\.+\d', rsltnum)[0]]]}
+            elif pen(rsltnum) == PEN.EQUIVOCAL:
+                self.rsltnum = {meddate: [PEN.EQUIVOCAL, [re.findall('\d+\.+\d', rsltnum)[0]]]}
+            else:
+                print('error : no pen value', self.ordcode, meddate, self.rsltnum)
+        else:
+            print('error : no value type', self.ordcode, meddate, self.rsltnum)
 
-        for scode in drug_scode:
-            final_data[patno][2][date][scode] = 0
-        for each_drug_data in patient_data_by_date[patno][date][2]:
-            if each_drug_data[9] in drug_scode:
-                dur = each_drug_data[4] * each_drug_data[5] * each_drug_data[6]
-                if each_drug_data[8] in ['N', 'P']:
-                    final_data[patno][2][date][each_drug_data[9]] += dur
+    def ord_value(self):
+        if self.ordcode in exam_num_ord:
+            return ValueType.NUMERIC
+        if self.ordcode in exam_pn_ord:
+            return ValueType.PN
+        if self.ordcode in exam_pen_ord:
+            return ValueType.PEN
+        return None
+
+    def add_rsltnum(self, meddate, rsltnum):
+        meddate = time.strptime(meddate, '%Y%m%d')
+        if meddate in self.rsltnum.keys():
+            if self.ord_value() == ValueType.NUMERIC:
+                self.rsltnum[meddate][1].append(rsltnum)
+                self.rsltnum[meddate][0] = np.mean(self.rsltnum[meddate][1])
+            elif self.ord_value() == ValueType.PN:
+                if pn(rsltnum) == PN.POSITIVE:
+                    if self.rsltnum[meddate][0] != PN.POSITIVE:
+                        print('different PN value', self.ordcode, meddate)
+                        return None
+                    self.rsltnum[meddate][1].append(re.findall('\d+\.+\d', rsltnum)[0])
+                elif pn(rsltnum) == PN.NEGATIVE:
+                    if self.rsltnum[meddate][0] != PN.NEGATIVE:
+                        print('different PN value', self.ordcode, meddate)
+                        return None
+                    self.rsltnum[meddate][1].append(re.findall('\d+\.+\d', rsltnum)[0])
                 else:
-                    if dur > 0:
-                        final_data[patno][2][date][each_drug_data[9]] -= dur
-                    else:
-                        final_data[patno][2][date][each_drug_data[9]] += dur
-
-# code to check mutliple identical exam data for same patient in same day
-#        for i in exam_ord:
-#            if len(final_data[patno][0][date][i]) > 1:
-#                if i in multiple_tests.keys():
-#                    multiple_tests[i].append([patno, len(final_data[patno][0][date][i])])
-#                else:
-#                    multiple_tests[i] = [[patno, len(final_data[patno][0][date][i])]]
-
-print(final_data[list(final_data.keys())[4]])
-print('final data making process finished')
-
-import pandas as pd
-import numpy as np
-
-xlsx_dir = 'timeseries.xlsx'
-csv_dir = 'timeseries.csv'
-
-# export data about mutliple identical exam data for same patient in same day
-# temp_dir = 'statistical.csv'
-# final_ord = []
-# final_patno = []
-# final_count = []
-# for i in multiple_tests.keys():
-#    final_ord.append(i)
-#    for j in multiple_tests[i]:
-#         final_patno.append(j[0])
-#         final_count.append(j[1])
-#     for k in range(1,len(multiple_tests[i])):
-#         final_ord.append(None)
-# export_data = {'ordcode':final_ord,
-#                'patno':final_patno,
-#                'count':final_count}
-# df = pd.DataFrame(export_data)
-# df.to_csv(temp_dir)
-
-final_patno = []
-final_gender = []
-final_age_year = []
-final_age_month = []
-final_weight = []
-final_height = []
-final_bmi = []
-final_admission = []
-final_discharge = []
-final_admission_date = []
-final_date = []
-final_exam = []
-for i in range(len(exam_num_ord)+len(exam_pn_ord)+len(exam_pen_ord)):
-    final_exam.append([])
-
-final_drug = []
-for i in range(len(drug_scode)):
-    final_drug.append([])
-
-
-def null_input_check(patno, value, value_type):
-    if value is None or value == '':
-        print(patno, 'doesn\'t have,', value_type, 'data')
-    return value
-
-
-# missing_WH_patno_wh = []
-# missing_WH_patno_w = []
-# missing_WH_patno_h = []
-# write all data needed to export
-for patno in patient_data.keys():
-    date_length = len(final_data[patno][0].keys())
-
-    final_patno.append(patno)
-    final_gender.append(null_input_check(patno, patient_data[patno][0][3], 'gender'))
-
-    for date in final_data[patno][0].keys():
-        final_date.append(date)
-        # height, weight, age need to be done
-        # final_height.append(null_input_check(patno, [patno][0][date][2]), 'height')
-        for k in range(len(exam_ord)):
-            final_exam[k].append(final_data[patno][0][date][exam_ord[k]])
-        for m in range(len(drug_scode)):
-            if final_data[patno][1][date][drug_scode[m]] >= 0:
-                final_drug[m].append(final_data[patno][1][date][drug_scode[m]])
+                    print('error', self.ordcode, meddate, rsltnum)
+            elif self.ord_value() == ValueType.PEN:
+                if pen(rsltnum) == PEN.POSITIVE:
+                    if self.rsltnum[meddate][0] != PEN.POSITIVE:
+                        print('different PEN value', self.ordcode, meddate)
+                        return None
+                    self.rsltnum[meddate][1].append(re.findall('\d+\.+\d', rsltnum)[0])
+                elif pen(rsltnum) == PEN.NEGATIVE:
+                    if self.rsltnum[meddate][0] != PEN.NEGATIVE:
+                        print('different PEN value', self.ordcode, meddate)
+                        return None
+                    self.rsltnum[meddate][1].append(re.findall('\d+\.+\d', rsltnum)[0])
+                elif pen(rsltnum) == PEN.EQUIVOCAL:
+                    if self.rsltnum[meddate][0] != PEN.EQUIVOCAL:
+                        print('different PEN value', self.ordcode, meddate)
+                        return None
+                    self.rsltnum[meddate][1].append(re.findall('\d+\.+\d', rsltnum)[0])
+                else:
+                    print('error : no PEN value', self.ordcode, meddate, rsltnum)
             else:
-                final_drug[m].append('ERROR')
+                print('error : no value type', self.ordcode, meddate, rsltnum)
+        else:
+            if self.ord_value() == ValueType.NUMERIC:
+                self.rsltnum[meddate] = [rsltnum, [rsltnum]]
+            elif self.ord_value() == ValueType.PN:
+                if pn(rsltnum) == PN.POSITIVE:
+                    self.rsltnum[meddate] = [PN.POSITIVE, [re.findall('\d+\.+\d', rsltnum)[0]]]
+                elif pn(rsltnum) == PN.NEGATIVE:
+                    self.rsltnum[meddate] = [PN.NEGATIVE, [re.findall('\d+\.+\d', rsltnum)[0]]]
+                else:
+                    print('error : no pn value', self.ordcode, meddate, self.rsltnum)
+            elif self.ord_value() == ValueType.PEN:
+                if pen(rsltnum) == PEN.POSITIVE:
+                    self.rsltnum[meddate] = [PEN.POSITIVE, [re.findall('\d+\.+\d', rsltnum)[0]]]
+                elif pen(rsltnum) == PEN.NEGATIVE:
+                    self.rsltnum[meddate] = [PEN.NEGATIVE, [re.findall('\d+\.+\d', rsltnum)[0]]]
+                elif pen(rsltnum) == PEN.EQUIVOCAL:
+                    self.rsltnum[meddate] = [PEN.EQUIVOCAL, [re.findall('\d+\.+\d', rsltnum)[0]]]
+                else:
+                    print('error : no pen value', self.ordcode, meddate, self.rsltnum)
+            else:
+                print('error : no value type', self.ordcode, meddate, self.rsltnum)
 
-    # final_age_year.append(null_input_check(patno, patient_data[patno][0][4], 'age year'))
-    # final_age_month.append(null_input_check(patno, patient_data[patno][0][5], 'age month'))
-    # if patient_data[patno][0][1] is not None and patient_data[patno][0][2] is not None:
-    #     final_weight.append(null_input_check(patno, patient_data[patno][0][2], 'weight'))
-    #     final_height.append(null_input_check(patno, patient_data[patno][0][1], 'height'))
-    #     final_bmi.append(final_weight[-1] / np.power(final_height[-1] / 100, 2))
-    # elif patient_data[patno][0][1] is not None:
-    #     final_height.append(patient_data[patno][0][1])
-    #     if patno in additional_patient_data.keys():
-    #         final_weight.append(additional_patient_data[patno][1])
-    #     else:
-    #         final_weight.append(avg_data[0][0])
-    #         # missing_WH_patno_w.append(patno)
-    #     final_bmi.append(final_weight[-1] / np.power(final_height[-1] / 100, 2))
-    # elif patient_data[patno][0][2] is not None:
-    #     final_weight.append(patient_data[patno][0][2])
-    #     if patno in additional_patient_data.keys():
-    #         final_height.append(additional_patient_data[patno][0])
-    #     else:
-    #         final_height.append(avg_data[0][1])
-    #         # missing_WH_patno_h.append(patno)
-    #     final_bmi.append(final_weight[-1] / np.power(final_height[-1] / 100, 2))
-    # else:
-    #     if patno in additional_patient_data.keys():
-    #         final_weight.append(additional_patient_data[patno][1])
-    #         final_height.append(additional_patient_data[patno][0])
-    #     else:
-    #         final_weight.append(avg_data[0][0])
-    #         final_height.append(avg_data[0][1])
-    #         # missing_WH_patno_wh.append(patno)
-    #     final_bmi.append(final_weight[-1] / np.power(final_height[-1] / 100, 2))
-    # for i in range(date_length - 1):
-    #     final_patno.append(None)
-    #     final_weight.append(None)
-    #     final_height.append(None)
-    #     final_bmi.append(None)
-    #     final_gender.append(None)
-    #     final_age_year.append(None)
-    #     final_age_month.append(None)
-    #
-    # for j in patient_admin_data[patno]:
-    #     final_admission.append(j[1])
-    #     final_discharge.append(j[2])
-    #     final_admission_date.append(j[3])
-    # for l in range(date_length - len(patient_admin_data[patno])):
-    #     final_admission.append(None)
-    #     final_discharge.append(None)
-    #     final_admission_date.append(None)
-    #
-    #
 
-print('making export data process finished')
+class Drug:
+    def __init__(self, ordcode, scode):
+        self.ordcode = ordcode
+        self.scode = scode
+        self.duration = {}
+        self.result = {}
 
-export_data = {'PATNO': final_patno,
-               'GENDER': final_gender,
-               'AGE_YEAR': final_age_year,
-               'AGE_MONTH': final_age_month,
-               'HEIGHT': final_height,
-               'WEIGHT': final_weight,
-               'BMI': final_bmi,
-               'ADMDT': final_admission,
-               'DSCHDT': final_discharge,
-               'DATEDIFF': final_admission_date,
-               'DATE': final_date}
-for i in range(len(exam_ord)):
-    export_data[exam_ord[i]] = final_exam[i]
-for i in range(len(drug_scode)):
-    export_data[drug_scode[i]] = final_drug[i]
+    def add_drug_record(self, meddate, ordseqno, packqty, cnt, day, mkfg):
+        meddate = time.strptime(meddate, '%Y%m%d')
+        try:
+            if mkfg in ['D', 'B', 'C']:
+                return None
+            if mkfg in ['N', 'P']:
+                mkfg = Mkfg.PRESCRIBED
+            else:
+                mkfg = Mkfg.RETRIEVED
+            info = [int(ordseqno), abs(float(packqty)*int(cnt)*int(day)), float(packqty), int(cnt), int(day), mkfg]
+            if meddate not in self.duration.keys():
+                self.duration[meddate] = [info]
+            else:
+                self.duration[meddate].append(info)
+        except TypeError:
+            print('error in type casting drug info', self.ordcode, meddate, ordseqno, packqty, cnt, day)
 
-# print('weight', missing_WH_patno_w)
-# print('height', missing_WH_patno_h)
-# print('both', missing_WH_patno_wh)
-df = pd.DataFrame(export_data)
-print(df.shape)
+    def process_record_by_date(self):
+        keys = list(self.duration.keys())
+        keys = sorted(keys, reverse=True)
+        self.duration = {i:self.duration[i] for i in keys}
+        for date in self.duration.keys():
+            temp = []
+            for record in self.duration[date]:
+                if record[5] == Mkfg.PRESCRIBED:
+                    temp.append(record)
+                else:
+                    for i in temp:
+                        if i[1] == record[1]:
+                            temp.remove(i)
+                            break
+                    else:
+                        temp.append(record)
+            for i in range(len(temp)-1, 0, -1):
+                if temp[i][5] == Mkfg.PRESCRIBED:
+                    if temp[i-1][5] == Mkfg.PRESCRIBED:
+                        temp[i-1][1] += temp[i][1]
+                        temp[i-1][4] += temp[i][4]
+                    else:
+                        continue
+                else:
+                    temp[i-1][1] -= temp[i][1]
+            self.duration[date] = temp
+        keys = list(self.duration.keys())
+        keys = sorted(keys)
+        self.duration = {i: self.duration[i] for i in keys}
 
-df.to_csv(csv_dir)
-# df.to_xlsx(csv_dir,)
+    def make_result(self):
+        current_meddate = list(self.duration.keys())[0]
+        rslt_total = 0
+        rslt_day = 7
+        for date in self.duration.keys():
+            if abs(date - current_meddate) <= rslt_day:
+                for record in self.duration[date]:
+                    rslt_total += record[5] * record[1]
+                    rslt_day += record[4]
+            else:
+                self.result[current_meddate] = [rslt_total, rslt_day-7]
+                rslt_total = 0
+                rslt_day = 7
+                current_meddate = date
+                for record in self.duration[date]:
+                    rslt_total += record[5] * record[1]
+                    rslt_day += record[4]
 
-print('code finished')
+class Physical:
+    def __init__(self, meddate, birthyear, height, weight):
+        meddate = time.strptime(meddate, '%Y%m%d')
+        self.birthyear = time.strptime(birthyear, '%Y%m%d').tm_year
+        self.age = {meddate: abs(meddate.tm_year - self.birthyear)}
+        self.height = {meddate: height}
+        self.weight = {meddate: weight}
+        self.bmi = {meddate: weight/pow(height/100, 2)}
+
+    def add_physical(self, meddate, height, weight):
+        meddate = time.strptime(meddate, '%Y%m%d')
+        self.age[meddate] = abs(meddate.tm_year - self.birthyear)
+        self.height[meddate] = height
+        self.weight[meddate] = weight
+
+
+class Patient:
+    def __init__(self, patno, gender, birthyear):
+        self.patno = patno
+        self.gender = gender
+        self.birthyear = time.strptime(birthyear, '%Y%m%d')
+        self.physical = None
+        self.exam = {}
+        self.drug = {}
+
+    def init_physical(self, meddate, height, weight):
+        self.physical = Physical(meddate, self.birthyear, height, weight)
+
+    def new_physical(self, meddate, height, weight):
+        self.physical.add_physical(meddate, height, weight)
+
+    def new_exam(self, ordcode, meddate, rsltnum):
+        if ordcode not in self.exam.keys():
+            self.exam[ordcode] = Exam(ordcode, meddate, rsltnum)
+        else:
+            self.exam[ordcode].add_rsltnum(meddate, rsltnum)
+
+    def new_drug(self, ordcode, meddate, day, packqty, cnt, mkfg, scode):
+        if ordcode not in self.drug.keys():
+            self.drug[ordcode] = Drug(ordcode, meddate, day, packqty, cnt, scode)
+        else:
+            self.drug[ordcode].cal_duration(meddate, day, packqty, cnt, mkfg)
+
+#
+# print('program started')
+# conn = pymysql.connect(host='203.252.105.181',
+#                        user='yohansohn',  # user id
+#                        password='johnsohn12',  # user password
+#                        db='DR_ANS_AJCO',
+#                        charset='utf8')
+# cursor = conn.cursor()
+#
+# # 0: SCODE
+# # maybe need ordcode instead of scode
+# # only scode that has more than 100 patients are prescript and has DCYN as N
+# # remove scode where product name contains '원외', '자가', '임상'
+# sql = '''SELECT SCODE
+# FROM common_drug_master
+# JOIN drug ON drug.ORDCODE = common_drug_master.ORDCODE
+# WHERE PATNO like '5%' AND DCYN ='N'
+# AND common_drug_master.`PRODENNM` not like '%원외%'
+# AND common_drug_master.`PRODENNM` not like '%자가%'
+# AND common_drug_master.`PRODENNM` not like '%임상%'
+# GROUP BY SCODE
+# HAVING COUNT(DISTINCT PATNO) >= 100 AND SCODE is not null;'''
+# cursor.execute(sql)
+# result = cursor.fetchall()
+# drug_raw = list(result)
+# drug_scode = []
+# for i in drug_raw:
+#     drug_scode.append(i[0])
+#
+# # 0: PATNO, 1: HEIGHT, 2: WEIGHT    # old data
+# # 0:patno 1:gender 2:birthyear      # new data
+# sql = '''select patno, meddate, height, weight from body_measure
+# where patno>5000000 and patno<6000000;'''
+# cursor.execute(sql)
+# result = cursor.fetchall()
+# patient_data = {}
+# for data in result:
+#     patient_data[data[0]] = Patient(data[0], data[1], data[2])
+#
+# # 0:patno 1:meddate 2:height 3:weight
+# sql = ''''''
+# cursor.execute(sql)
+# result = cursor.fetchall()
+# for data in result:
+#     if patient_data[data[0]].physical is None:
+#         patient_data[data[0]].init_physical(data[1], data[2], data[3])
+#     else:
+#         patient_data[data[0]].new_physical(data[1], data[2], data[3])
+#
+# # 0: PATNO, 1: ordcode, 2: orddate, 3: rsltnum  # old data
+# # 0:patno 1:ordcode 2:orddate 3:rsltnum  # new data
+# sql = '''select patno, ordcode, orddate, rsltnum from `exam`
+# where `PATNO`>5000000 and `PATNO`<6000000;'''
+# cursor.execute(sql)
+# result = cursor.fetchall()
+# for data in result:
+#     patient_data[data[0]].new_exam(data[1], data[2], data[3])
+#
+# # 0: patno, 1: ordcode, 2: orddate, 3: patfg, 4: packqty, 5: cnt, 6: day, 7: dcyn, 8: mkfg 9: scode # old data
+# # 0:patno 1:ordcode 2:meddate 3:day 4:packqty 5:cnt 6:mkfg 7:scode # new data
+# sql = '''select
+#     patno, drug.ordcode, orddate, patfg, packqty, cnt, day, dcyn, mkfg, scode
+# from
+#     `drug` join common_drug_master cdm on drug.ORDCODE = cdm.ORDCODE
+# where
+#     SCODE IS NOT NULL AND dcyn = 'N' AND `PATNO` >5000000 and `PATNO`<6000000;'''
+# cursor.execute(sql)
+# result = cursor.fetchall()
+# for data in result:
+#     patient_data[data[0]].new_drug(data[1], data[2], data[3], data[4], data[5], data[6], data[7])
+#
+# print('exam and drug data classified by patno')
+#
+# export_patno = []
+# export_gender = []
+# export_meddate = []
+# export_age = []
+# export_height = []
+# export_weight = []
+# export_bmi = []
+# export_exam = {}
+# for ordcode in exam_for_column:
+#     export_exam[ordcode] = []
+# export_drug = {}
+# for scode in drug_scode:
+#     export_drug[scode] = []
+#
+# for i in patient_data.keys():
+#     export_patno.append(i)
+#     export_gender.append(patient_data[i].gender)
+#     date = []
+#     for exam in patient_data[i].exam:
+#         for meddate in exam.rsltnum.keys():
+#             if meddate not in date:
+#                 date.append(meddate)
+#     for drug in patient_data[i].drug:
+#         for meddate in drug.duration.keys():
+#             if meddate not in date:
+#                 date.append(meddate)
+#     date.sort()
+#     for meddate in date:
+#         export_meddate.append(meddate)
+#         for ordcode in exam_for_column:
+#             if meddate in patient_data[i].exam[ordcode].rsltnum.keys():
+#                 export_exam[ordcode].append()
