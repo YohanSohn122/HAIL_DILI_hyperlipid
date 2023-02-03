@@ -18,15 +18,12 @@ cursor.execute(sql)
 result = cursor.fetchall()
 common_drug = list(result)
 
-sql = '''
-            select * from `exam`
-            where `PATNO` > 5000000 and `PATNO`< 6000000
-            ;
-        '''
+sql = '''SELECT * FROM exam
+WHERE ORDCODE IN ('B1010001', 'B1020001', 'B1040001', 'B1050001', 'B1060001', 'B1540001A', 'B1540001B', 'B2570001', 'B2580001', 'B2602001', 'B2710001', 'C2210001', 'C2281001', 'C2283001', 'C3711010', 'C3720001', 'C3730001', 'C3750001', 'C3750001A', 'C4802001', 'C4802002', 'C4802051', 'C4803001', 'C4812052', 'C4862001', 'C4872001', 'C4872002', 'C4912001', 'C4913001') AND PATNO>5000000;'''
 cursor.execute(sql)
 result = cursor.fetchall()      # result is given as tuple
 exam = list(result)
-for i in range(len(exam)):      # each data's type is tuple so type chasting to list is needed
+for i in range(len(exam)):      # each data's type is tuple so type casting to list is needed
     exam[i] = list(exam[i])
 #print(exam[0])
 
@@ -292,10 +289,8 @@ for i in exam_dic_by_ordcode.keys():
         print('processing error',i)
 
 import pandas as pd
-import os
 
-file_nm = 'exam.xlsx'
-xlxs_dir = os.path.join(file_nm)
+xlxs_dir = 'exam.xlsx'
 
 df = pd.DataFrame({'ordcode':list(exam_dic_by_ordcode.keys()),
                    'ordname':final_ordname,
@@ -326,14 +321,38 @@ df = pd.DataFrame({'ordcode':list(exam_dic_by_ordcode.keys()),
                    })
 
 df.to_excel(xlxs_dir, # directory and file name to write
-            sheet_name = 'Sheet1', 
-            na_rep = 'NaN', 
-            float_format = "%.2f", 
+            sheet_name = 'Sheet1',
+            na_rep = '',
+            float_format = "%.2f",
             header = True,
-            startrow = 0, 
-            startcol = 0, 
-            #engine = 'xlsxwriter', 
+            startrow = 0,
+            startcol = 0,
+            #engine = 'xlsxwriter',
             freeze_panes = (2, 0)
-            ) 
+            )
+print('making excel file finished')
+
+# # plot for numeric exams
+# # in progress
+# from matplotlib import mlab
+# import matplotlib.pyplot as plt
+# import numpy as np
+#
+# # Percentile values
+# p = np.array([0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0])
+#
+# num_data = {}
+# for i in numeric:
+#     num_data[i] = []
+#     for j in exam_dic_by_ordcode[i]:
+#         for data in j:
+#             if is_number(data[9]):
+#                 num_data[i].append(data[9])
+#
+#     perc = mlab.prctile(num_data[i], p=p)
+#
+#     plt.plot(num_data[i])
+#
+# plt.show()
 
 print('code finished')
